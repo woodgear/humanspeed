@@ -1,0 +1,38 @@
+{
+  "name": "zhihu-feed-scraper",
+  "version": "1.0.0",
+  "description": "Zhihu feed scraper with Playwright and VNC support",
+  "type": "module",
+  "main": "dist/main.js",
+  "scripts": {
+    "dev": "tsx --watch src/main.ts",
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "setup:vnc": "bash scripts/setup-vnc.sh",
+    "install:browser": "playwright install chromium"
+  },
+  "keywords": [
+    "zhihu",
+    "scraper",
+    "playwright",
+    "vnc"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@fastify/cors": "^8.5.0",
+    "@novnc/novnc": "^1.6.0",
+    "dotenv": "^16.3.1",
+    "fastify": "^4.25.0",
+    "jsdom": "^27.4.0",
+    "playwright": "^1.40.0",
+    "websockify": "^0.7.1",
+    "winston": "^3.11.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.3.3"
+  }
+}

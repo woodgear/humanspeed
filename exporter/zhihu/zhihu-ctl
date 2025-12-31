@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+#
+# zhihu-ctl - Command-line tool for managing Zhihu feed scraper
+#
+
+set -e
+
+API_BASE="${ZHIHU_API:-http://localhost:3000}"
+API_VERSION="zhihu.scraper.io/v1"
+
+usage() {
+    cat <<USAGE
+zhihu-ctl - Command-line tool for managing Zhihu feed scraper
+
+USAGE:
+    zhihu-ctl get feeditems [OPTIONS]
+    zhihu-ctl get feeditem NAME
+
+COMMANDS:
+    get feeditems       List all feed items
+    get feeditem        Get a specific feed item by name/ID
+
+OPTIONS:
+    --limit N           Maximum number of items to return (default: 20)
+    --offset N          Offset for pagination (default: 0)
+    --type TYPE         Filter by type (answer|article|zvideo|pin)
+    --output FORMAT     Output format: default, wide, json
+    -o FORMAT           Short form of --output
+
+ENVIRONMENT:
+    ZHIHU_API          API base URL (default: http://localhost:3000)
+
+EXAMPLES:
+    zhihu-ctl get feeditems
+    zhihu-ctl get feeditems --limit 10
+    zhihu-ctl get feeditem 1234567890
+    zhihu-ctl get feeditems -o json
+
+USAGE
+    exit 1
+}
+
+CMD="${1:-}"
+RESOURCE="${2:-}"
+LIMIT=20
+OFFSET=0
+TYPE=""
+OUTPUT="default"
+NAME=""
+
+shift 2 2>/dev/null || true
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+    --limit)
+        LIMIT="$2"
+        shift 2
+        ;;
+    --offset)
+        OFFSET="$2"
+        shift 2
+        ;;
+    --type)
+        TYPE="$2"
+        shift 2
+        ;;
+    --output | -o)
+        OUTPUT="$2"
+        shift 2
+        ;;
+    -h | --help) usage ;;
+    *)
+        NAME="$1"
+        shift
+        ;;
+    esac
+done
+
+print_feeditem() {
+    local item="$1"
+    local name=$(echo "$item" | jq -r '.metadata.name')
+    local type=$(echo "$item" | jq -r '.status.type')
+    local title=$(echo "$item" | jq -r '.spec.title')
+    local author=$(echo "$item" | jq -r '.spec.author.name')
+    local excerpt=$(echo "$item" | jq -r '.spec.excerpt')
+    local votes=$(echo "$item" | jq -r '.status.stats.voteCount')
+    local comments=$(echo "$item" | jq -r '.status.stats.commentCount')
+
+    if [[ "$OUTPUT" == "wide" ]]; then
+        printf "%-20s %-10s %-40s %-15s %5s %5s\n" \
+            "$name" "$type" "${title:0:40}" "${author:0:15}" "$votes" "$comments"
+    else
+        # Valid YAML format
+        echo "- name: \"$name\""
+        echo "  title: \"$title\""
+        echo "  answer: \"$excerpt\""
+        echo "  author: \"$author\""
+        echo "  votes: $votes"
+        echo "  comments: $comments"
+    fi
+}
+
+cmd_get_feeditems() {
+    local url="${API_BASE}/apis/${API_VERSION}/feeditems?limit=${LIMIT}&offset=${OFFSET}"
+    [[ -n "$TYPE" ]] && url="${url}&type=${TYPE}"
+
+    local response=$(curl -s "$url")
+
+    if [[ "$OUTPUT" == "json" ]]; then
+        echo "$response" | jq '.'
+        return
+    fi
+
+    if [[ "$OUTPUT" == "wide" ]]; then
+        printf "%-20s %-10s %-40s %-15s %5s %5s\n" \
+            "NAME" "TYPE" "TITLE" "AUTHOR" "VOTES" "COMMENTS"
+    fi
+
+    echo "$response" | jq -c '.items[]' | while read -r item; do
+        print_feeditem "$item"
+    done
+
+    local count=$(echo "$response" | jq -r '.items | length')
+    local remaining=$(echo "$response" | jq -r '.metadata.remainingItemCount // 0')
+
+    if [[ "$OUTPUT" == "wide" ]]; then
+        echo ""
+    fi
+    if [[ "$OUTPUT" == "wide" ]]; then
+        echo "Showing ${count} items. Remaining: ${remaining}"
+    elif [[ "$OUTPUT" == "default" ]]; then
+        echo "# Showing ${count} items. Remaining: ${remaining}"
+    fi
+}
+
+cmd_get_feeditem() {
+    [[ -z "$NAME" ]] && {
+        echo "Error: NAME is required" >&2
+        exit 1
+    }
+
+    local url="${API_BASE}/apis/${API_VERSION}/feeditems/${NAME}"
+    local response=$(curl -s -w "\n%{http_code}" "$url")
+    local body=$(echo "$response" | head -n -1)
+    local status=$(echo "$response" | tail -n 1)
+
+    if [[ "$status" != "200" ]]; then
+        echo "Error: $(echo "$body" | jq -r '.status.conditions[0].message')" >&2
+        exit 1
+    fi
+
+    if [[ "$OUTPUT" == "json" ]]; then
+        echo "$body" | jq '.'
+        return
+    fi
+
+    echo "Name:       $(echo "$body" | jq -r '.metadata.name')"
+    echo "Type:       $(echo "$body" | jq -r '.status.type')"
+    echo "Created:    $(echo "$body" | jq -r '.metadata.creationTimestamp')"
+    echo ""
+    echo "Title:"
+    echo "  $(echo "$body" | jq -r '.spec.title')"
+    echo ""
+    echo "Author:     $(echo "$body" | jq -r '.spec.author.name')"
+    echo "URL:        $(echo "$body" | jq -r '.spec.url')"
+    echo ""
+    echo "Stats:"
+    echo "  Votes:    $(echo "$body" | jq -r '.status.stats.voteCount')"
+    echo "  Comments: $(echo "$body" | jq -r '.status.stats.commentCount')"
+    echo ""
+    echo "Excerpt:"
+    echo "$body" | jq -r '.spec.excerpt' | fold -s -w 80 | sed 's/^/  /'
+}
+
+case "$CMD" in
+get)
+    case "$RESOURCE" in
+    feeditems) cmd_get_feeditems ;;
+    feeditem) cmd_get_feeditem ;;
+    *)
+        echo "Error: Unknown resource '${RESOURCE}'" >&2
+        usage
+        ;;
+    esac
+    ;;
+-h | --help) usage ;;
+*)
+    echo "Error: Unknown command '${CMD}'" >&2
+    usage
+    ;;
+esac
