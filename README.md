@@ -29,6 +29,8 @@
   - 通过某种api对信息流做过滤和排序
   - 通过某种插件机制(webassembly)对信息流做过滤和排序
    - 支持自定义不同账号的关注人
+- cookiecloud ?
+- online playground ?
 ## NOT TODO
 - 和反爬虫相关的东西
 - 和登录相关的东西(提供便捷的vnc手动登陆方式和登录状态检测)
